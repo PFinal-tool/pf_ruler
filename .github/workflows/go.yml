@@ -1,0 +1,154 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  push:
+    branches: [ "master" ]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: "1.22"
+
+    - name: Build
+      run: |
+          mkdir -p ./dist/${{ matrix.goos }}_${{ matrix.goarch }}
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o ./dist/${{ matrix.goos }}_${{ matrix.goarch }}/pf_ruler-${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} -v ./main.go
+
+    - name: Test
+      run: go test -v ./...
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: pf_ruler-${{ matrix.goos }}_${{ matrix.goarch }}
+        path: ./dist/${{ matrix.goos }}_${{ matrix.goarch }}/pf_ruler*
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux AMD64 artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: pf_ruler-linux_amd64
+          path: ./dist/linux_amd64/
+
+      - name: Download Linux ARM64 artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: pf_ruler-linux_arm64
+          path: ./dist/linux_arm64/
+
+      - name: Download macOS AMD64 artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: pf_ruler-darwin_amd64
+          path: ./dist/darwin_amd64/
+
+      - name: Download macOS ARM64 artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: pf_ruler-darwin_arm64
+          path: ./dist/darwin_arm64/
+
+      - name: Download Windows AMD64 artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: pf_ruler-windows_amd64
+          path: ./dist/windows_amd64/
+
+      - name: Download Windows ARM64 artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: pf_ruler-windows_arm64
+          path: ./dist/windows_arm64/
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset Linux AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/linux_amd64/pf_ruler-linux_amd64
+          asset_name: pf_ruler-linux_amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Release Asset Linux ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/linux_arm64/pf_ruler-linux_arm64
+          asset_name: pf_ruler-linux_arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Release Asset macOS AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/darwin_amd64/pf_ruler-darwin_amd64
+          asset_name: pf_ruler-darwin_amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Release Asset macOS ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/darwin_arm64/pf_ruler-darwin_arm64
+          asset_name: pf_ruler-darwin_arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Release Asset Windows AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/windows_amd64/pf_ruler-windows_amd64.exe
+          asset_name: pf_ruler-windows_amd64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload Release Asset Windows ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/windows_arm64/pf_ruler-windows_arm64.exe
+          asset_name: pf_ruler-windows_arm64.exe
+          asset_content_type: application/octet-stream
