@@ -37,7 +37,7 @@ jobs:
     - name: Test
       run: go test -v ./...
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: pf_ruler-${{ matrix.goos }}_${{ matrix.goarch }}
         path: ./dist/${{ matrix.goos }}_${{ matrix.goarch }}/pf_ruler*
@@ -47,37 +47,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Linux AMD64 artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: pf_ruler-linux_amd64
           path: ./dist/linux_amd64/
 
       - name: Download Linux ARM64 artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: pf_ruler-linux_arm64
           path: ./dist/linux_arm64/
 
       - name: Download macOS AMD64 artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: pf_ruler-darwin_amd64
           path: ./dist/darwin_amd64/
 
       - name: Download macOS ARM64 artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: pf_ruler-darwin_arm64
           path: ./dist/darwin_arm64/
 
       - name: Download Windows AMD64 artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: pf_ruler-windows_amd64
           path: ./dist/windows_amd64/
 
       - name: Download Windows ARM64 artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: pf_ruler-windows_arm64
           path: ./dist/windows_arm64/
