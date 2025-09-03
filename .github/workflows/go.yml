@@ -32,7 +32,11 @@ jobs:
     - name: Build
       run: |
           mkdir -p ./dist/${{ matrix.goos }}_${{ matrix.goarch }}
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o ./dist/${{ matrix.goos }}_${{ matrix.goarch }}/pf_ruler-${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} -v ./main.go
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -ldflags="-s -w" -o ./dist/${{ matrix.goos }}_${{ matrix.goarch }}/pf_ruler-${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.goos == 'windows' && '.exe' || '' }} -v ./main.go
+          # 设置执行权限（非Windows系统）
+          if [ "${{ matrix.goos }}" != "windows" ]; then
+            chmod +x ./dist/${{ matrix.goos }}_${{ matrix.goarch }}/pf_ruler-${{ matrix.goos }}_${{ matrix.goarch }}
+          fi
 
     - name: Test
       run: go test -v ./...
