@@ -45,6 +45,8 @@ jobs:
   release:
     needs: [build]
     runs-on: ubuntu-latest
+    # 只在推送标签时运行发布任务
+    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Download Linux AMD64 artifacts
         uses: actions/download-artifact@v4
@@ -88,8 +90,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
 
