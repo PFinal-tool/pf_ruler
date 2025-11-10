@@ -49,29 +49,49 @@ func (l *FileLoader) LoadProjectRules() ([]Rule, error) {
 	// 从 requirements.md 中解析所有章节内容
 	requirementsRules := parseRequirementsMarkdown(requirementsContent)
 
+	// 读取 project 目录中的所有 .md 文件（除了 requirements.md）
+	projectFileRules, err := l.loadProjectFiles(projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("读取项目规则文件失败: %w", err)
+	}
+
 	// 生成项目规则
 	rules := []Rule{}
 
 	// 技术栈规范规则
+	techStacks := []string{}
 	if techStack != nil && techStack["tech_stacks"] != nil {
-		techStacks := getStringSlice(techStack, "tech_stacks")
-		if len(techStacks) > 0 {
-			rules = append(rules, Rule{
-				Title:       "技术栈规范",
-				Description: "项目使用的技术栈和版本要求",
-				Type:        "tech_stack",
-				Content:     fmt.Sprintf("技术栈: %s", strings.Join(techStacks, ", ")),
-				Priority:    5,
-				Enabled:     true,
-				Tags:        []string{"tech", "stack"},
-				CreatedAt:   time.Now(),
-				UpdatedAt:   time.Now(),
-			})
+		techStacks = getStringSlice(techStack, "tech_stacks")
+	}
+
+	// 如果 tech_stack.yaml 中的技术栈为空，尝试从 requirements.md 中提取
+	if len(techStacks) == 0 {
+		extractedTechStacks := extractTechStacksFromRequirements(requirementsContent)
+		if len(extractedTechStacks) > 0 {
+			techStacks = extractedTechStacks
 		}
+	}
+
+	// 如果有技术栈信息，生成技术栈规范规则
+	if len(techStacks) > 0 {
+		rules = append(rules, Rule{
+			Title:       "技术栈规范",
+			Description: "项目使用的技术栈和版本要求",
+			Type:        "tech_stack",
+			Content:     fmt.Sprintf("技术栈: %s", strings.Join(techStacks, ", ")),
+			Priority:    5,
+			Enabled:     true,
+			Tags:        []string{"tech", "stack"},
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		})
 	}
 
 	// 添加从 requirements.md 解析的规则
 	rules = append(rules, requirementsRules...)
+
+	// 添加从 project 目录其他 .md 文件解析的规则
+	rules = append(rules, projectFileRules...)
 
 	// 如果没有从文件中读取到内容，使用默认值
 	if len(rules) == 0 {
@@ -103,6 +123,40 @@ func (l *FileLoader) LoadProjectRules() ([]Rule, error) {
 	return rules, nil
 }
 
+// loadProjectFiles 读取 project 目录中的规则文件（排除 requirements.md）
+func (l *FileLoader) loadProjectFiles(projectDir string) ([]Rule, error) {
+	var allRules []Rule
+
+	// 读取目录中的所有 .md 文件
+	files, err := os.ReadDir(projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("读取项目目录失败: %w", err)
+	}
+
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
+			continue
+		}
+
+		// 跳过 requirements.md，因为它已经单独处理
+		if file.Name() == "requirements.md" {
+			continue
+		}
+
+		filePath := filepath.Join(projectDir, file.Name())
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			continue // 跳过无法读取的文件
+		}
+
+		// 解析 Markdown 文件内容，提取规则
+		rules := l.parseMarkdownRules(string(content), file.Name())
+		allRules = append(allRules, rules...)
+	}
+
+	return allRules, nil
+}
+
 // parseRequirementsMarkdown 解析 requirements.md 文件，提取所有章节内容
 func parseRequirementsMarkdown(content string) []Rule {
 	if content == "" {
@@ -111,14 +165,14 @@ func parseRequirementsMarkdown(content string) []Rule {
 
 	var rules []Rule
 	lines := strings.Split(content, "\n")
-	
+
 	var currentSection string
 	var currentContent []string
 	var inSection bool
-	
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		
+
 		// 检查是否是二级标题（## 章节名）
 		if strings.HasPrefix(line, "## ") {
 			// 保存前一个章节的内容
@@ -128,12 +182,12 @@ func parseRequirementsMarkdown(content string) []Rule {
 					rules = append(rules, *rule)
 				}
 			}
-			
+
 			// 开始新章节
 			currentSection = strings.TrimPrefix(line, "## ")
 			currentContent = []string{}
 			inSection = true
-			
+
 			// 跳过项目基本信息和技术栈章节（这些由其他方式处理）
 			if currentSection == "项目基本信息" || currentSection == "技术栈" || currentSection == "目标 AI 编辑器" {
 				inSection = false
@@ -143,7 +197,7 @@ func parseRequirementsMarkdown(content string) []Rule {
 			currentContent = append(currentContent, line)
 		}
 	}
-	
+
 	// 保存最后一个章节
 	if inSection && currentSection != "" && len(currentContent) > 0 {
 		rule := createRuleFromSection(currentSection, currentContent)
@@ -151,7 +205,7 @@ func parseRequirementsMarkdown(content string) []Rule {
 			rules = append(rules, *rule)
 		}
 	}
-	
+
 	return rules
 }
 
@@ -160,19 +214,19 @@ func createRuleFromSection(sectionName string, content []string) *Rule {
 	if len(content) == 0 {
 		return nil
 	}
-	
+
 	// 根据章节名推断规则类型和标签
 	ruleType, tags := inferRuleTypeAndTags(sectionName)
-	
+
 	// 合并内容
 	contentText := strings.Join(content, "\n")
-	
+
 	// 设置优先级（根据章节类型）
 	priority := 4 // 默认优先级
 	if strings.Contains(strings.ToLower(sectionName), "安全") || strings.Contains(strings.ToLower(sectionName), "性能") {
 		priority = 5 // 安全和性能规则优先级最高
 	}
-	
+
 	return &Rule{
 		Title:       sectionName,
 		Description: fmt.Sprintf("项目 %s 相关的要求和规范", sectionName),
@@ -191,7 +245,7 @@ func inferRuleTypeAndTags(sectionName string) (string, []string) {
 	sectionLower := strings.ToLower(sectionName)
 	var ruleType string
 	var tags []string
-	
+
 	// 推断规则类型
 	switch {
 	case strings.Contains(sectionLower, "代码规范") || strings.Contains(sectionLower, "编码规范"):
@@ -225,10 +279,10 @@ func inferRuleTypeAndTags(sectionName string) (string, []string) {
 		ruleType = "general"
 		tags = []string{"general", "requirements"}
 	}
-	
+
 	// 添加章节名作为标签
 	tags = append(tags, strings.ToLower(sectionName))
-	
+
 	return ruleType, tags
 }
 
@@ -275,21 +329,21 @@ func extractSecurityConstraints(content string) string {
 // LoadGlobalRules 加载全局规则
 func (l *FileLoader) LoadGlobalRules() ([]Rule, error) {
 	globalDir := filepath.Join(l.basePath, "global")
-	
+
 	// 检查全局目录是否存在
 	if _, err := os.Stat(globalDir); os.IsNotExist(err) {
 		return []Rule{}, nil
 	}
-	
+
 	// 首先读取 global 目录中的实际文件内容
 	fileRules, err := l.loadGlobalFiles(globalDir)
 	if err != nil {
 		return nil, fmt.Errorf("读取全局规则文件失败: %w", err)
 	}
-	
+
 	// 获取项目技术栈信息
 	techStacks := l.getProjectTechStacks()
-	
+
 	// 生成默认全局规则
 	rules := []Rule{
 		{
@@ -326,67 +380,72 @@ func (l *FileLoader) LoadGlobalRules() ([]Rule, error) {
 			UpdatedAt:   time.Now(),
 		},
 	}
-	
+
 	// 根据技术栈生成相应的规避规则
 	techSpecificRules := l.generateTechSpecificRules(techStacks)
 	rules = append(rules, techSpecificRules...)
-	
+
 	// 将文件规则添加到结果中
 	rules = append(rules, fileRules...)
-	
+
 	return rules, nil
 }
 
 // loadGlobalFiles 读取 global 目录中的规则文件
 func (l *FileLoader) loadGlobalFiles(globalDir string) ([]Rule, error) {
 	var allRules []Rule
-	
+
 	// 读取目录中的所有 .md 文件
 	files, err := os.ReadDir(globalDir)
 	if err != nil {
 		return nil, fmt.Errorf("读取全局目录失败: %w", err)
 	}
-	
+
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
 			continue
 		}
-		
+
 		filePath := filepath.Join(globalDir, file.Name())
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			continue // 跳过无法读取的文件
 		}
-		
+
 		// 解析 Markdown 文件内容，提取规则
 		rules := l.parseMarkdownRules(string(content), file.Name())
 		allRules = append(allRules, rules...)
 	}
-	
+
 	return allRules, nil
 }
 
 // parseMarkdownRules 解析 Markdown 文件内容，提取规则
 func (l *FileLoader) parseMarkdownRules(content, filename string) []Rule {
 	var rules []Rule
-	
+
 	lines := strings.Split(content, "\n")
 	var currentRule *Rule
 	var currentContent []string
-	
+
 	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		
+		trimmedLine := strings.TrimSpace(line)
+
 		// 检查是否是标题行
-		if strings.HasPrefix(line, "## ") {
-			// 保存前一个规则
-			if currentRule != nil && len(currentContent) > 0 {
-				currentRule.Content = strings.Join(currentContent, "\n")
+		if strings.HasPrefix(trimmedLine, "## ") {
+			// 保存前一个规则（即使内容为空也保存）
+			if currentRule != nil {
+				if len(currentContent) > 0 {
+					currentRule.Content = strings.Join(currentContent, "\n")
+				} else {
+					// 如果内容为空，设置默认内容
+					currentRule.Content = "（无详细说明）"
+				}
 				rules = append(rules, *currentRule)
 			}
-			
+
 			// 创建新规则
-			title := strings.TrimPrefix(line, "## ")
+			title := strings.TrimPrefix(trimmedLine, "## ")
 			currentRule = &Rule{
 				Title:       title,
 				Description: fmt.Sprintf("来自 %s 的规则", filename),
@@ -398,25 +457,32 @@ func (l *FileLoader) parseMarkdownRules(content, filename string) []Rule {
 				UpdatedAt:   time.Now(),
 			}
 			currentContent = []string{}
-		} else if strings.HasPrefix(line, "- ") && currentRule != nil {
-			// 收集规则内容
-			currentContent = append(currentContent, line)
+		} else if currentRule != nil {
+			// 收集所有非标题行的内容（包括列表项、普通文本、代码块等）
+			// 跳过空行，但保留其他所有内容
+			if trimmedLine != "" {
+				currentContent = append(currentContent, trimmedLine)
+			}
 		}
 	}
-	
+
 	// 保存最后一个规则
-	if currentRule != nil && len(currentContent) > 0 {
-		currentRule.Content = strings.Join(currentContent, "\n")
+	if currentRule != nil {
+		if len(currentContent) > 0 {
+			currentRule.Content = strings.Join(currentContent, "\n")
+		} else {
+			currentRule.Content = "（无详细说明）"
+		}
 		rules = append(rules, *currentRule)
 	}
-	
+
 	return rules
 }
 
 // inferRuleType 根据标题推断规则类型
 func (l *FileLoader) inferRuleType(title string) string {
 	title = strings.ToLower(title)
-	
+
 	switch {
 	case strings.Contains(title, "安全"):
 		return "security"
@@ -440,7 +506,7 @@ func (l *FileLoader) inferRuleType(title string) string {
 // inferTags 根据标题和文件名推断标签
 func (l *FileLoader) inferTags(title, filename string) []string {
 	var tags []string
-	
+
 	// 从文件名推断技术栈
 	filename = strings.ToLower(filename)
 	switch {
@@ -463,7 +529,7 @@ func (l *FileLoader) inferTags(title, filename string) []string {
 	case strings.Contains(filename, "devops"):
 		tags = append(tags, "devops")
 	}
-	
+
 	// 从标题推断类型
 	title = strings.ToLower(title)
 	switch {
@@ -476,7 +542,7 @@ func (l *FileLoader) inferTags(title, filename string) []string {
 	case strings.Contains(title, "测试"):
 		tags = append(tags, "testing")
 	}
-	
+
 	return tags
 }
 
@@ -484,21 +550,35 @@ func (l *FileLoader) inferTags(title, filename string) []string {
 func (l *FileLoader) getProjectTechStacks() []string {
 	techStackPath := filepath.Join(l.basePath, "project", "tech_stack.yaml")
 
-	if _, err := os.Stat(techStackPath); os.IsNotExist(err) {
-		return []string{}
+	techStacks := []string{}
+
+	// 先尝试从 tech_stack.yaml 读取
+	if _, err := os.Stat(techStackPath); err == nil {
+		techStackData, err := os.ReadFile(techStackPath)
+		if err == nil {
+			var techStack map[string]interface{}
+			if err := yaml.Unmarshal(techStackData, &techStack); err == nil {
+				techStacks = getStringSlice(techStack, "tech_stacks")
+			}
+		}
 	}
 
-	techStackData, err := os.ReadFile(techStackPath)
-	if err != nil {
-		return []string{}
+	// 如果 tech_stack.yaml 中的技术栈为空，尝试从 requirements.md 中提取
+	if len(techStacks) == 0 {
+		requirementsPath := filepath.Join(l.basePath, "project", "requirements.md")
+		if _, err := os.Stat(requirementsPath); err == nil {
+			requirementsData, err := os.ReadFile(requirementsPath)
+			if err == nil {
+				requirementsContent := string(requirementsData)
+				extractedTechStacks := extractTechStacksFromRequirements(requirementsContent)
+				if len(extractedTechStacks) > 0 {
+					techStacks = extractedTechStacks
+				}
+			}
+		}
 	}
 
-	var techStack map[string]interface{}
-	if err := yaml.Unmarshal(techStackData, &techStack); err != nil {
-		return []string{}
-	}
-
-	return getStringSlice(techStack, "tech_stacks")
+	return techStacks
 }
 
 // generateTechSpecificRules 根据技术栈生成相应的规避规则
@@ -764,9 +844,28 @@ func (l *FileLoader) LoadMetadata() (*Metadata, error) {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
+	// 获取技术栈信息
+	techStacks := getStringSlice(techStack, "tech_stacks")
+
+	// 如果 tech_stack.yaml 中的技术栈为空，尝试从 requirements.md 中提取
+	if len(techStacks) == 0 {
+		requirementsPath := filepath.Join(projectDir, "requirements.md")
+		if _, err := os.Stat(requirementsPath); err == nil {
+			requirementsData, err := os.ReadFile(requirementsPath)
+			if err == nil {
+				requirementsContent := string(requirementsData)
+				// 从 requirements.md 中提取技术栈信息
+				extractedTechStacks := extractTechStacksFromRequirements(requirementsContent)
+				if len(extractedTechStacks) > 0 {
+					techStacks = extractedTechStacks
+				}
+			}
+		}
+	}
+
 	metadata := &Metadata{
 		ProjectName:   getString(techStack, "project_name", "未知项目"),
-		TechStacks:    getStringSlice(techStack, "tech_stacks"),
+		TechStacks:    techStacks,
 		AIEditors:     getStringSlice(techStack, "ai_editors"),
 		CreatedAt:     time.Now(),
 		LastUpdatedAt: time.Now(),
@@ -774,6 +873,59 @@ func (l *FileLoader) LoadMetadata() (*Metadata, error) {
 	}
 
 	return metadata, nil
+}
+
+// extractTechStacksFromRequirements 从 requirements.md 中提取技术栈信息
+func extractTechStacksFromRequirements(content string) []string {
+	if content == "" {
+		return []string{}
+	}
+
+	lines := strings.Split(content, "\n")
+	var techStacks []string
+	var inTechStackSection bool
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+
+		// 检查是否进入技术栈章节
+		if strings.HasPrefix(trimmedLine, "## ") {
+			sectionName := strings.TrimPrefix(trimmedLine, "## ")
+			if sectionName == "技术栈" {
+				inTechStackSection = true
+				continue
+			} else {
+				inTechStackSection = false
+			}
+		}
+
+		// 如果在技术栈章节中，提取内容
+		if inTechStackSection {
+			// 处理列表项格式：- PHP5.6, ThinkPHP3.2
+			if strings.HasPrefix(trimmedLine, "- ") {
+				content := strings.TrimPrefix(trimmedLine, "- ")
+				// 分割逗号分隔的技术栈
+				parts := strings.Split(content, ",")
+				for _, part := range parts {
+					tech := strings.TrimSpace(part)
+					if tech != "" {
+						techStacks = append(techStacks, tech)
+					}
+				}
+			} else if trimmedLine != "" && !strings.HasPrefix(trimmedLine, "#") {
+				// 处理普通文本格式：PHP5.6, ThinkPHP3.2
+				parts := strings.Split(trimmedLine, ",")
+				for _, part := range parts {
+					tech := strings.TrimSpace(part)
+					if tech != "" {
+						techStacks = append(techStacks, tech)
+					}
+				}
+			}
+		}
+	}
+
+	return techStacks
 }
 
 // LoadAllRules 加载所有规则
