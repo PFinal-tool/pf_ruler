@@ -869,7 +869,7 @@ func (l *FileLoader) LoadMetadata() (*Metadata, error) {
 		AIEditors:     getStringSlice(techStack, "ai_editors"),
 		CreatedAt:     time.Now(),
 		LastUpdatedAt: time.Now(),
-		Version:       "1.0.0",
+		Version:       "1.1.0",
 	}
 
 	return metadata, nil

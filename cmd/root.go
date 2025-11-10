@@ -36,7 +36,7 @@ func showLogo() {
   =======================================
   `
 	color.New(color.FgMagenta, color.Bold).Print(logo)
-	color.New(color.FgBlue, color.Bold).Println("       AI编辑器规则统一管理工具 v1.0       ")
+	color.New(color.FgBlue, color.Bold).Println("       AI编辑器规则统一管理工具 v1.1       ")
 	color.New(color.FgBlue, color.Bold).Println("    https://github.com/pfinal/pf_ruler    ")
 	color.New(color.FgBlue, color.Bold).Println("  =======================================")
 	color.New(color.Reset).Println()
